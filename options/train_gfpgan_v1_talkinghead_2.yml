@@ -11,8 +11,9 @@ datasets:
     type: TalkingHeadDataset
     phase: train
     # dataroot_gt: datasets/ffhq/ffhq_512.lmdb
-    dataroot_lq: /home/ldtuan/VideoRestoration/dataset/Finetune2/train/input
-    dataroot_gt: /home/ldtuan/VideoRestoration/dataset/Finetune2/train/output
+    dataroot_lq: /mmlabworkspace_new/WorkSpaces/ngaptb/khanhnhm/khanhngo/VideoRestoration/VideoRestoration/dataset/TalkingHead/new_data/degradation/degraded_images
+    dataroot_gt: /mmlabworkspace_new/WorkSpaces/ngaptb/khanhnhm/khanhngo/VideoRestoration/VideoRestoration/dataset/TalkingHead/new_data/degradation/images
+    component_path: /mmlabworkspace_new/WorkSpaces/ngaptb/khanhnhm/khanhngo/VideoRestoration/VideoRestoration/STERR-GAN/data/train_video.json
     io_backend:
       # type: lmdb
       type: disk
@@ -46,14 +47,13 @@ datasets:
     resize: [256, 256]
     gt_size: [256, 256]
 
-    crop_components: false
-    component_path: /home/ldtuan/VideoRestoration/dataset/Finetune2/train.json
+    crop_components: true
     eye_enlarge_ratio: 1.4
 
     # data loader
     use_shuffle: true
-    num_worker_per_gpu: 6
-    batch_size_per_gpu: 8
+    num_worker_per_gpu: 0
+    batch_size_per_gpu: 16
     dataset_enlarge_ratio: 1
     prefetch_mode: ~
 
@@ -63,9 +63,9 @@ datasets:
     name: validation
     type: TalkingHeadDataset
     phase: val
-    dataroot_lq: /home/ldtuan/VideoRestoration/dataset/Finetune2/test/input
-    dataroot_gt: /home/ldtuan/VideoRestoration/dataset/Finetune2/test/output
-    component_path: /home/ldtuan/VideoRestoration/dataset/Finetune2/test.json
+    dataroot_lq: /mmlabworkspace_new/WorkSpaces/ngaptb/khanhnhm/khanhngo/VideoRestoration/VideoRestoration/dataset/TalkingHead/new_data/degradation/degraded_images
+    dataroot_gt: /mmlabworkspace_new/WorkSpaces/ngaptb/khanhnhm/khanhngo/VideoRestoration/VideoRestoration/dataset/TalkingHead/new_data/degradation/images
+    component_path: /mmlabworkspace_new/WorkSpaces/ngaptb/khanhnhm/khanhngo/VideoRestoration/VideoRestoration/STERR-GAN/data/test_video.json
     io_backend:
       type: disk
     mean: [0.5, 0.5, 0.5]
@@ -95,14 +95,14 @@ network_d:
   channel_multiplier: 1
   resample_kernel: [1, 3, 3, 1]
 
-# network_d_left_eye:
-#   type: FacialComponentDiscriminator
+network_d_left_eye:
+  type: FacialComponentDiscriminator
 
-# network_d_right_eye:
-#   type: FacialComponentDiscriminator
+network_d_right_eye:
+  type: FacialComponentDiscriminator
 
-# network_d_mouth:
-#   type: FacialComponentDiscriminator
+network_d_mouth:
+  type: FacialComponentDiscriminator
 
 network_identity:
   type: ResNetArcFace
@@ -116,12 +116,12 @@ path:
   param_key_g: params_ema
   strict_load_g: ~
   pretrain_network_d: ~
-  pretrain_network_d_left_eye: ~
-  pretrain_network_d_right_eye: ~
-  pretrain_network_d_mouth: ~
+  pretrain_network_d_left_eye: experiments/pretrained_models/GFPGANv1_net_d_left_eye.pth
+  pretrain_network_d_right_eye: experiments/pretrained_models/GFPGANv1_net_d_right_eye.pth
+  pretrain_network_d_mouth: experiments/pretrained_models/GFPGANv1_net_d_mouth.pth
   pretrain_network_identity: experiments/pretrained_models/arcface_resnet18.pth
   # resume
-  resume_state: experiments/finetune2_GFPGAN_TalkingHead/training_states/60000.state
+  # resume_state: experiments/finetune2_GFPGAN_TalkingHead/training_states/60000.state
   ignore_resume_networks: ['network_identity']
 
 # training settings

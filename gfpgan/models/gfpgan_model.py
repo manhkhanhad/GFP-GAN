@@ -202,7 +202,7 @@ class GFPGANModel(BaseModel):
         self.lq = data['lq'].to(self.device)
         if 'gt' in data:
             self.gt = data['gt'].to(self.device)
-
+        
         if 'loc_left_eye' in data:
             # get facial component locations, shape (batch, 4)
             self.loc_left_eyes = data['loc_left_eye']
@@ -232,9 +232,9 @@ class GFPGANModel(BaseModel):
         return pyramid_gt
 
     def get_roi_regions(self, eye_out_size=80, mouth_out_size=120):
-        face_ratio = int(self.opt['network_g']['out_size'] / 512)
-        eye_out_size *= face_ratio
-        mouth_out_size *= face_ratio
+        face_ratio = self.opt['network_g']['out_size'] / 512
+        eye_out_size = int(eye_out_size * face_ratio)
+        mouth_out_size = int(mouth_out_size * face_ratio)
 
         rois_eyes = []
         rois_mouths = []
@@ -251,6 +251,10 @@ class GFPGANModel(BaseModel):
 
         rois_eyes = torch.cat(rois_eyes, 0).to(self.device)
         rois_mouths = torch.cat(rois_mouths, 0).to(self.device)
+        rois_eyes_mask = rois_eyes[:,1:].sum(1) == 0  # Invalid box
+        rois_mouths_mask = rois_mouths[:,1:].sum(1) == 0  # Invalid box
+        rois_eyes = rois_eyes[~rois_eyes_mask]
+        rois_mouths = rois_mouths[~rois_mouths_mask]
 
         # real images
         all_eyes = roi_align(self.gt, boxes=rois_eyes, output_size=eye_out_size) * face_ratio

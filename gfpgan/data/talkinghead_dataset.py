@@ -50,7 +50,34 @@ class TalkingHeadDataset(data.Dataset):
                 self.paths = [line.split('.')[0] for line in fin]
         else:
             # disk backend: scan file list from a folder
-            self.paths = paired_paths_from_folder([self.lq_folder, self.gt_folder], ['lq', 'gt'], self.filename_tmpl)
+            with open(opt['component_path']) as f:
+                self.components_data = json.load(f)
+            self.video_names = list(self.components_data.keys())
+
+            self.paths = []
+            self.components_list = {}
+            
+            for video_name in self.video_names:
+                frame_names = self.components_data[video_name]
+                for frame_name, component in frame_names.items():
+                    lq_path = osp.join(self.lq_folder, video_name, f"{int(frame_name):03d}.png")
+                    gt_path = osp.join(self.gt_folder, video_name, f"{int(frame_name):03d}.png")
+                    if not osp.exists(lq_path) or not osp.exists(gt_path):
+                        continue
+                    component_key = f"{video_name}_{int(frame_name):03d}"
+                    self.paths.append({'lq_path': lq_path, 'gt_path': gt_path, 'key': component_key})
+                    self.components_list[component_key] = component
+                    
+            # self.paths = paired_paths_from_folder([self.lq_folder, self.gt_folder], ['lq', 'gt'], self.filename_tmpl)
+            # # Check all paths are valid, if not, remove the path
+            # breakpoint()
+            # invalid_paths = 0
+            # for path in self.paths:
+            #     if not osp.exists(path['lq_path']) or not osp.exists(path['gt_path']):
+            #         self.paths.remove(path)
+            #         invalid_paths += 1
+            # print(f"Removed {invalid_paths} invalid paths")
+
 
     def get_component_coordinates(self, image_name, status, scale_w, scale_h):
         """Get facial component (left_eye, right_eye, mouth) coordinates from a pre-loaded pth file"""
@@ -71,17 +98,20 @@ class TalkingHeadDataset(data.Dataset):
         for part in ['left_eye', 'right_eye', 'mouth']:
             # mean = components_bbox[part][0:2]
             # half_len = components_bbox[part][2]
+            if components_bbox[part] is None:
+                locations.append([0,0,0,0])
+                continue
 
-            x,y = component[image_name][part][0:2]
-            w,h = component[image_name][part][2:]
+            x,y = components_bbox[part][0:2]
+            w,h = components_bbox[part][2:4]
 
             x = x / scale_w
             w = w / scale_w
             y = y / scale_h
             h = h / scale_h
 
-            if 'eye' in part:
-                half_len *= self.eye_enlarge_ratio
+            # if 'eye' in part:
+            #     half_len *= self.eye_enlarge_ratio
 
             loc = np.array([(x-w), (y-h), (x+w), (y+h)])
             loc = torch.from_numpy(loc).float()
@@ -97,22 +127,33 @@ class TalkingHeadDataset(data.Dataset):
 
         # Load gt and lq images. Dimension order: HWC; channel order: BGR;
         # image range: [0, 1], float32.
-        gt_path = self.paths[index]['gt_path']
-        img_bytes = self.file_client.get(gt_path, 'gt')
-        img_gt = imfrombytes(img_bytes, float32=True)
-        ori_size = img_gt.shape[:2]
-        img_gt = cv2.resize(img_gt, self.opt['resize'], interpolation=cv2.INTER_LINEAR)
+        try:
+            gt_path = self.paths[index]['gt_path']
+            lq_path = self.paths[index]['lq_path']
+            key = self.paths[index]['key']
 
-        lq_path = self.paths[index]['lq_path']
-        img_bytes = self.file_client.get(lq_path, 'lq')
-        img_lq = imfrombytes(img_bytes, float32=True)
-        img_lq = cv2.resize(img_lq, self.opt['resize'], interpolation=cv2.INTER_LINEAR)
+            img_bytes = self.file_client.get(gt_path, 'gt')
+            img_gt = imfrombytes(img_bytes, float32=True)
+            img_gt = cv2.imread(gt_path).astype(np.float32) / 255.0
+            ori_size = img_gt.shape[:2]
+            img_gt = cv2.resize(img_gt, self.opt['resize'], interpolation=cv2.INTER_LINEAR)
+
+            
+            img_bytes = self.file_client.get(lq_path, 'lq')
+            img_lq = imfrombytes(img_bytes, float32=True)
+            img_lq = cv2.resize(img_lq, self.opt['resize'], interpolation=cv2.INTER_LINEAR)
+        except Exception as e:
+            print(f"Error loading gt image: {e}")
+            print(f"Gt path: {gt_path}")
+            print(f"Lq path: {lq_path}")
+            return self.__getitem__(index + 1)
+        
 
         # get facial component coordinates
         if self.crop_components:
             image_name = gt_path.split('/')[-1]
             scale_w, scale_h = (ori_size[0]/ self.opt['resize'][0]), (ori_size[1]/ self.opt['resize'][1])
-            locations = self.get_component_coordinates(image_name, status, scale_w, scale_h)
+            locations = self.get_component_coordinates(key, 0, scale_w, scale_h)
             loc_left_eye, loc_right_eye, loc_mouth = locations
         
         # augmentation for training
@@ -138,9 +179,9 @@ class TalkingHeadDataset(data.Dataset):
                 'lq': img_lq,
                 'gt': img_gt,
                 'gt_path': gt_path,
-                'loc_left_eye': loc_left_eye,
-                'loc_right_eye': loc_right_eye,
-                'loc_mouth': loc_mouth
+                'loc_left_eye': torch.tensor(loc_left_eye),
+                'loc_right_eye': torch.tensor(loc_right_eye),
+                'loc_mouth': torch.tensor(loc_mouth)
             }
             return return_dict
         else:
