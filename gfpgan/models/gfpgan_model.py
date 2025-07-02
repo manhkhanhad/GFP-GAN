@@ -255,17 +255,20 @@ class GFPGANModel(BaseModel):
         rois_mouths_mask = rois_mouths[:,1:].sum(1) == 0  # Invalid box
         rois_eyes = rois_eyes[~rois_eyes_mask]
         rois_mouths = rois_mouths[~rois_mouths_mask]
-
-        # real images
-        all_eyes = roi_align(self.gt, boxes=rois_eyes, output_size=eye_out_size) * face_ratio
-        self.left_eyes_gt = all_eyes[0::2, :, :, :]
-        self.right_eyes_gt = all_eyes[1::2, :, :, :]
-        self.mouths_gt = roi_align(self.gt, boxes=rois_mouths, output_size=mouth_out_size) * face_ratio
-        # output
-        all_eyes = roi_align(self.output, boxes=rois_eyes, output_size=eye_out_size) * face_ratio
-        self.left_eyes = all_eyes[0::2, :, :, :]
-        self.right_eyes = all_eyes[1::2, :, :, :]
-        self.mouths = roi_align(self.output, boxes=rois_mouths, output_size=mouth_out_size) * face_ratio
+        
+        try:
+            # real images
+            all_eyes = roi_align(self.gt, boxes=rois_eyes, output_size=eye_out_size) * face_ratio
+            self.left_eyes_gt = all_eyes[0::2, :, :, :]
+            self.right_eyes_gt = all_eyes[1::2, :, :, :]
+            self.mouths_gt = roi_align(self.gt, boxes=rois_mouths, output_size=mouth_out_size) * face_ratio
+            # output
+            all_eyes = roi_align(self.output, boxes=rois_eyes, output_size=eye_out_size) * face_ratio
+            self.left_eyes = all_eyes[0::2, :, :, :]
+            self.right_eyes = all_eyes[1::2, :, :, :]
+            self.mouths = roi_align(self.output, boxes=rois_mouths, output_size=mouth_out_size) * face_ratio
+        except:
+            breakpoint()
 
     def _gram_mat(self, x):
         """Calculate Gram matrix.
@@ -351,7 +354,7 @@ class GFPGANModel(BaseModel):
             fake_g_pred = self.net_d(self.output)
             l_g_gan = self.cri_gan(fake_g_pred, True, is_disc=False)
             l_g_total += l_g_gan
-            loss_dict['l_g_gan'] = l_g_gan
+            loss_dict['l_g_gan'] = l_g_gan 
 
             # facial component loss
             if self.use_facial_disc:

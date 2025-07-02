@@ -12,8 +12,9 @@ from basicsr.utils.registry import DATASET_REGISTRY
 import json
 from torchvision.transforms.functional import (adjust_brightness, adjust_contrast, adjust_hue, adjust_saturation,
                                                normalize)
-
-
+from PIL import Image
+from PIL import Image, ImageFile
+ImageFile.LOAD_TRUNCATED_IMAGES = True
 @DATASET_REGISTRY.register()
 class TalkingHeadDataset(data.Dataset):
     def __init__(self, opt):
@@ -60,10 +61,14 @@ class TalkingHeadDataset(data.Dataset):
             for video_name in self.video_names:
                 frame_names = self.components_data[video_name]
                 for frame_name, component in frame_names.items():
+                    # Check valid component:
+                    if component['left_eye'] is None or component['right_eye'] is None or component['mouth'] is None:
+                        continue
                     lq_path = osp.join(self.lq_folder, video_name, f"{int(frame_name):03d}.png")
                     gt_path = osp.join(self.gt_folder, video_name, f"{int(frame_name):03d}.png")
                     if not osp.exists(lq_path) or not osp.exists(gt_path):
                         continue
+                    
                     component_key = f"{video_name}_{int(frame_name):03d}"
                     self.paths.append({'lq_path': lq_path, 'gt_path': gt_path, 'key': component_key})
                     self.components_list[component_key] = component
@@ -128,20 +133,29 @@ class TalkingHeadDataset(data.Dataset):
         # Load gt and lq images. Dimension order: HWC; channel order: BGR;
         # image range: [0, 1], float32.
         try:
+            # print(f"Loading index {index} with path: {self.paths[index]}")
             gt_path = self.paths[index]['gt_path']
             lq_path = self.paths[index]['lq_path']
             key = self.paths[index]['key']
 
-            img_bytes = self.file_client.get(gt_path, 'gt')
-            img_gt = imfrombytes(img_bytes, float32=True)
-            img_gt = cv2.imread(gt_path).astype(np.float32) / 255.0
-            ori_size = img_gt.shape[:2]
-            img_gt = cv2.resize(img_gt, self.opt['resize'], interpolation=cv2.INTER_LINEAR)
+            img_gt = Image.open(gt_path)
+            img_gt = np.array(img_gt)
+            img_gt = cv2.cvtColor(img_gt, cv2.COLOR_RGB2BGR).astype(np.float32) / 255.0
 
+            img_lq = Image.open(lq_path)
+            img_lq = np.array(img_lq)
+            img_lq = cv2.cvtColor(img_lq, cv2.COLOR_RGB2BGR).astype(np.float32) / 255.0
             
-            img_bytes = self.file_client.get(lq_path, 'lq')
-            img_lq = imfrombytes(img_bytes, float32=True)
-            img_lq = cv2.resize(img_lq, self.opt['resize'], interpolation=cv2.INTER_LINEAR)
+            ori_size = img_gt.shape[:2]
+
+            # img_bytes = self.file_client.get(gt_path, 'gt')
+            # img_gt = imfrombytes(img_bytes, float32=True)
+            # ori_size = img_gt.shape[:2]
+            # img_gt = cv2.resize(img_gt, self.opt['resize'], interpolation=cv2.INTER_LINEAR)
+            
+            # img_bytes = self.file_client.get(lq_path, 'lq')
+            # img_lq = imfrombytes(img_bytes, float32=True)
+            # img_lq = cv2.resize(img_lq, self.opt['resize'], interpolation=cv2.INTER_LINEAR)
         except Exception as e:
             print(f"Error loading gt image: {e}")
             print(f"Gt path: {gt_path}")
@@ -169,6 +183,15 @@ class TalkingHeadDataset(data.Dataset):
 
         # BGR to RGB, HWC to CHW, numpy to tensor
         img_gt, img_lq = img2tensor([img_gt, img_lq], bgr2rgb=True, float32=True)
+        
+        # Check for empty tensors
+        if img_gt.numel() == 0:
+            print(f"GT tensor is empty for path: {gt_path}")
+            exit(1)
+        if img_lq.numel() == 0:
+            print(f"LQ tensor is empty for path: {lq_path}")
+            exit(1)
+        
         # normalize
         if self.mean is not None or self.std is not None:
             normalize(img_lq, self.mean, self.std, inplace=True)
