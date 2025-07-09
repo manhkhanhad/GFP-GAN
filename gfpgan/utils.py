@@ -158,23 +158,29 @@ class GFPGANer():
         else:
             return self.face_helper.cropped_faces, self.face_helper.restored_faces, None
         
-    def enhance_full_frame(self, img, has_aligned=False, only_center_face=False, paste_back=True, weight=0.5):
+    def enhance_full_frame(self, input_imgs, has_aligned=False, only_center_face=False, paste_back=True, weight=0.5):
 
         # prepare data
-
-        image = cv2.resize(img, (256, 256))
-        image_t = img2tensor(image / 255., bgr2rgb=True, float32=True)
-        normalize(image_t, (0.5, 0.5, 0.5), (0.5, 0.5, 0.5), inplace=True)
-        image_t = image_t.unsqueeze(0).to(self.device)
-
+        batch_imgs_t = []
+        batch_imgs = []
+        for img in input_imgs:
+            img = cv2.resize(img, (256, 256))
+            batch_imgs.append(img)
+            image_t = img2tensor(img / 255., bgr2rgb=True, float32=True)
+            image_t = image_t.unsqueeze(0)
+            batch_imgs_t.append(image_t)
+        batch_imgs_t = torch.cat(batch_imgs_t, 0)
+        batch_imgs_t = batch_imgs_t.to(self.device)
         try:
-            output = self.gfpgan(image_t, return_rgb=False, weight=weight)[0]
+            output = self.gfpgan(batch_imgs_t, return_rgb=False, weight=weight)[0]
             # convert to image
-            restored_image = tensor2img(output.squeeze(0), rgb2bgr=True, min_max=(-1, 1))
+            restored_image_batch = []
+            for i in range(output.shape[0]):
+                restored_image = tensor2img(output[i].squeeze(0), rgb2bgr=True, min_max=(-1, 1))
+                restored_image_batch.append(restored_image)
         except RuntimeError as error:
             print(f'\tFailed inference for GFPGAN: {error}.')
-            restored_image = image
+            restored_image_batch = batch_imgs
 
-        restored_image = restored_image.astype('uint8')
-
-        return restored_image, image
+        restored_image_batch = [image.astype('uint8') for image in restored_image_batch]
+        return restored_image_batch, batch_imgs
