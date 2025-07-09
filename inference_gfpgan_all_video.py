@@ -22,12 +22,12 @@ def main():
     parser.add_argument('-o', '--output', type=str, default='results', help='Output folder. Default: results')
     # we use version to select models, which is more user-friendly
     parser.add_argument(
-        '-v', '--version', type=str, default='1.3', help='GFPGAN model version. Option: 1 | 1.2 | 1.3. Default: 1.3')
+        '-v', '--version', type=str, default='v1_finetune_256', help='GFPGAN model version. Option: 1 | 1.2 | 1.3. Default: 1.3')
     parser.add_argument(
         '-s', '--upscale', type=int, default=2, help='The final upsampling scale of the image. Default: 2')
 
     parser.add_argument(
-        '--bg_upsampler', type=str, default='realesrgan', help='background upsampler. Default: realesrgan')
+        '--bg_upsampler', type=str, default=None, help='background upsampler. Default: realesrgan')
     parser.add_argument(
         '--bg_tile',
         type=int,
@@ -48,12 +48,19 @@ def main():
     args = parser.parse_args()
 
     # ------------------------ input & output ------------------------
-    for video_name in tqdm(os.listdir(args.input)):
+    args.input = '/mmlabworkspace_new/WorkSpaces/ngaptb/khanhnhm/khanhngo/VideoRestoration/VideoRestoration/dataset/TalkingHead/new_data/degradation/degraded_images'
+    model_path = '/mmlabworkspace_new/WorkSpaces/ngaptb/HumanActionMimic/STERRGAN/GFP-GAN/experiments/finetune2_GFPGAN_TalkingHead/models/net_g_300000.pth'
+    with open("data/test_list.txt", "r") as f:
+        video_list = f.readlines()
+    for video_name in tqdm(video_list):
+        video_name = video_name.strip()
         video_path = os.path.join(args.input, video_name)
         img_list = [os.path.join(video_path, i) for i in os.listdir(video_path)]
         output_video = os.path.join(args.output, video_name)
 
         os.makedirs(output_video, exist_ok=True)
+        if len(os.listdir(output_video)) == len(img_list):
+            continue
 
         # ------------------------ set up background upsampler ------------------------
         if args.bg_upsampler == 'realesrgan':
@@ -111,16 +118,16 @@ def main():
         else:
             raise ValueError(f'Wrong model version {args.version}.')
 
-        # determine model paths
-        model_path = os.path.join('experiments/pretrained_models', model_name + '.pth')
-        if not os.path.isfile(model_path):
-            model_path = os.path.join('gfpgan/weights', model_name + '.pth')
-        if not os.path.isfile(model_path):
-            # download pre-trained models from url
-            model_path = url
+        # # determine model paths
+        # model_path = os.path.join('experiments/pretrained_models', model_name + '.pth')
+        # if not os.path.isfile(model_path):
+        #     model_path = os.path.join('gfpgan/weights', model_name + '.pth')
+        # if not os.path.isfile(model_path):
+        #     # download pre-trained models from url
+        #     model_path = url
 
-        if "finetune" in arch:
-            model_path = args.model_path
+        # if "finetune" in arch:
+        #     model_path = args.model_path
 
         restorer = GFPGANer(
             model_path=model_path,
@@ -132,61 +139,65 @@ def main():
         # ------------------------ restore ------------------------
         for img_path in img_list:
             # read image
-            img_name = os.path.basename(img_path)
-            # print(f'Processing {img_name} ...')
-            basename, ext = os.path.splitext(img_name)
-            input_img = cv2.imread(img_path, cv2.IMREAD_COLOR)
+            try:
+                img_name = os.path.basename(img_path)
+                # print(f'Processing {img_name} ...')
+                basename, ext = os.path.splitext(img_name)
+                input_img = cv2.imread(img_path, cv2.IMREAD_COLOR)
 
-            # restore faces and background if necessary
-            if "finetune" in arch:
-                restored_img, input_img= restorer.enhance_full_frame(
-                    input_img,
-                    has_aligned=args.aligned,
-                    only_center_face=args.only_center_face,
-                    paste_back=True,
-                    weight=args.weight)
-                
-                save_restore_path = os.path.join(output_video, 'restored_image',  f'{basename}.png')
-                imwrite(restored_img, save_restore_path)
-
-                cmp_img = np.concatenate((input_img, restored_img), axis=1)
-                imwrite(cmp_img, os.path.join(output_video, 'cmp', f'{basename}.png'))
-            else:
-                cropped_faces, restored_faces, restored_img = restorer.enhance(
-                    input_img,
-                    has_aligned=args.aligned,
-                    only_center_face=args.only_center_face,
-                    paste_back=True,
-                    weight=args.weight)
-
-                # save faces
-                for idx, (cropped_face, restored_face) in enumerate(zip(cropped_faces, restored_faces)):
-                    # save cropped face
-                    save_crop_path = os.path.join(output_video, 'cropped_faces', f'{basename}_{idx:03d}.png')
-                    imwrite(cropped_face, save_crop_path)
-                    # save restored face
-                    if args.suffix is not None:
-                        save_face_name = f'{basename}_{idx:03d}_{args.suffix}.png'
-                    else:
-                        save_face_name = f'{basename}_{idx:03d}.png'
-                    save_restore_path = os.path.join(output_video, 'restored_faces', save_face_name)
-                    imwrite(restored_face, save_restore_path)
-                    # save comparison image
-                    cmp_img = np.concatenate((cropped_face, restored_face), axis=1)
-                    imwrite(cmp_img, os.path.join(output_video, 'cmp', f'{basename}_{idx:03d}.png'))
-
-                # save restored img
-                if restored_img is not None:
-                    if args.ext == 'auto':
-                        extension = ext[1:]
-                    else:
-                        extension = args.ext
-
-                    if args.suffix is not None:
-                        save_restore_path = os.path.join(output_video, 'restored_imgs', f'{basename}_{args.suffix}.{extension}')
-                    else:
-                        save_restore_path = os.path.join(output_video, 'restored_imgs', f'{basename}.{extension}')
+                # restore faces and background if necessary
+                if "finetune" in arch:
+                    restored_img, input_img= restorer.enhance_full_frame(
+                        input_img,
+                        has_aligned=args.aligned,
+                        only_center_face=args.only_center_face,
+                        paste_back=True,
+                        weight=args.weight)
+                    
+                    save_restore_path = os.path.join(output_video, 'restored_image',  f'{basename}.png')
                     imwrite(restored_img, save_restore_path)
+
+                    cmp_img = np.concatenate((input_img, restored_img), axis=1)
+                    imwrite(cmp_img, os.path.join(output_video, 'cmp', f'{basename}.png'))
+                else:
+                    cropped_faces, restored_faces, restored_img = restorer.enhance(
+                        input_img,
+                        has_aligned=args.aligned,
+                        only_center_face=args.only_center_face,
+                        paste_back=True,
+                        weight=args.weight)
+
+                    # save faces
+                    for idx, (cropped_face, restored_face) in enumerate(zip(cropped_faces, restored_faces)):
+                        # save cropped face
+                        save_crop_path = os.path.join(output_video, 'cropped_faces', f'{basename}_{idx:03d}.png')
+                        imwrite(cropped_face, save_crop_path)
+                        # save restored face
+                        if args.suffix is not None:
+                            save_face_name = f'{basename}_{idx:03d}_{args.suffix}.png'
+                        else:
+                            save_face_name = f'{basename}_{idx:03d}.png'
+                        save_restore_path = os.path.join(output_video, 'restored_faces', save_face_name)
+                        imwrite(restored_face, save_restore_path)
+                        # save comparison image
+                        cmp_img = np.concatenate((cropped_face, restored_face), axis=1)
+                        imwrite(cmp_img, os.path.join(output_video, 'cmp', f'{basename}_{idx:03d}.png'))
+
+                    # save restored img
+                    if restored_img is not None:
+                        if args.ext == 'auto':
+                            extension = ext[1:]
+                        else:
+                            extension = args.ext
+
+                        if args.suffix is not None:
+                            save_restore_path = os.path.join(output_video, 'restored_imgs', f'{basename}_{args.suffix}.{extension}')
+                        else:
+                            save_restore_path = os.path.join(output_video, 'restored_imgs', f'{basename}.{extension}')
+                        imwrite(restored_img, save_restore_path)
+            except Exception as e:
+                print(f"Error processing {img_path}: {e}")
+                breakpoint()
 
             # print(f'Results are in the [{output_video}] folder.')
 
